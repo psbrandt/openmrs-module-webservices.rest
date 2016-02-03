@@ -25,7 +25,7 @@ public class Operation {
 	private String name;
 	
 	//A verbose explanation of the operation behavior
-	private String descritpion;
+	private String description;
 	
 	//A short summary of what the operation does
 	private String summary;
@@ -64,17 +64,17 @@ public class Operation {
 	}
 	
 	/**
-	 * @return the descritpion
+	 * @return the description
 	 */
-	public String getDescritpion() {
-		return descritpion;
+	public String getDescription() {
+		return description;
 	}
 	
 	/**
-	 * @param descritpion the descritpion to set
+	 * @param description the description to set
 	 */
-	public void setDescritpion(String descritpion) {
-		this.descritpion = descritpion;
+	public void setDescription(String description) {
+		this.description = description;
 	}
 	
 	/**
