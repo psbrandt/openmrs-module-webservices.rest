@@ -21,6 +21,18 @@ import com.fasterxml.jackson.annotation.JsonIgnore;
 //Describes an operation available on a single path
 public class Operation {
 	
+	public static String OPERATION_GET_ALL_METHOD = "doGetAll";
+	
+	public static String OPERATION_GET_BY_ID = "getByUniqueId";
+	
+	public static String OPERATION_VOID_RETIRE_METHOD = "delete";
+	
+	public static String OPERATION_DELETE_METHOD = "purge";
+	
+	public static String OPERATION_CREATE_METHOD = "create";
+	
+	public static String OPERATION_UPDATE_METHOD = "save";
+	
 	@JsonIgnore
 	private String name;
 	

@@ -3,16 +3,15 @@
  * Version 1.0 (the "License"); you may not use this file except in
  * compliance with the License. You may obtain a copy of the License at
  * http://license.openmrs.org
- *
  * Software distributed under the License is distributed on an "AS IS"
  * basis, WITHOUT WARRANTY OF ANY KIND, either express or implied. See the
  * License for the specific language governing rights and limitations
  * under the License.
- *
  * Copyright (C) OpenMRS, LLC.  All Rights Reserved.
  */
 package org.openmrs.module.webservices.docs.swagger;
 
+import java.lang.reflect.Method;
 import java.lang.reflect.Modifier;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -36,14 +35,13 @@ import org.openmrs.module.webservices.docs.ResourceRepresentation;
 import org.openmrs.module.webservices.docs.SearchHandlerDoc;
 import org.openmrs.module.webservices.docs.SearchQueryDoc;
 import org.openmrs.module.webservices.rest.SimpleObject;
+import org.openmrs.module.webservices.rest.web.RequestContext;
 import org.openmrs.module.webservices.rest.web.RestConstants;
 import org.openmrs.module.webservices.rest.web.api.RestService;
 import org.openmrs.module.webservices.rest.web.representation.Representation;
 import org.openmrs.module.webservices.rest.web.resource.api.Converter;
 import org.openmrs.module.webservices.rest.web.resource.api.SearchHandler;
-import org.openmrs.module.webservices.rest.web.resource.impl.DelegatingResourceDescription;
-import org.openmrs.module.webservices.rest.web.resource.impl.DelegatingResourceHandler;
-import org.openmrs.module.webservices.rest.web.resource.impl.DelegatingSubclassHandler;
+import org.openmrs.module.webservices.rest.web.resource.impl.*;
 import org.openmrs.module.webservices.rest.web.resource.impl.DelegatingResourceDescription.Property;
 import org.openmrs.module.webservices.rest.web.response.ResourceDoesNotSupportOperationException;
 import org.openmrs.util.OpenmrsConstants;
@@ -69,7 +67,7 @@ public class SwaggerSpecificationCreator {
 		synchronized (this) {
 			CreateApiDefinition();
 			AddPaths();
-			CreateObjectDefintions();
+			CreateObjectDefinitions();
 			AddResourceTags();
 		}
 		return CreateJSON();
@@ -109,6 +107,16 @@ public class SwaggerSpecificationCreator {
 		swaggerSpecification.setBasePath("/" + RestConstants.VERSION_1);
 		swaggerSpecification.setProduces(produces);
 		swaggerSpecification.setConsumes(consumes);
+	}
+	
+	private boolean TestOperationImplemented(OperationEnum operation, BaseDelegatingResource resource) {
+		Method method = null;
+		switch (operation) {
+			case get:
+				method = ReflectionUtils.findMethod(resource.getClass(), Operation.OPERATION_GET_ALL_METHOD, RequestContext.class);
+				return method != null && !method.getDeclaringClass().getName().endsWith("DelegatingCrudResource");
+		}
+		return true;
 	}
 	
 	private void AddPaths() {
@@ -254,13 +262,15 @@ public class SwaggerSpecificationCreator {
 					if (tempOperation.equals("GET")) {
 						if (operationType.equals("full")) {
 							//Get resource
-							Operation operationGet = new Operation();
+							Operation operationGet = null;
 							
 							if (resourceDoc.isSubResource()) {
 								operationGet = CreateOperation("get", resourceName, representation,
 								    OperationEnum.getSubresource);
 							} else {
-								operationGet = CreateOperation("get", resourceName, representation, OperationEnum.get);
+								if (TestOperationImplemented(OperationEnum.get, (BaseDelegatingResource) instance)) {
+									operationGet = CreateOperation("get", resourceName, representation, OperationEnum.get);
+								}
 							}
 							
 							if (operationGet != null) {
@@ -358,8 +368,12 @@ public class SwaggerSpecificationCreator {
 					if (tempOperation.equals("GET")) {
 						if (operationType.equals("full")) {
 							//Get resource
+							Operation operationGet = null;
+
+							if (TestOperationImplemented(OperationEnum.get, (BaseDelegatingResource) instance)) {
+								operationGet = CreateOperation("get", resourceName, representation, OperationEnum.get);
+							}
 							
-							Operation operationGet = CreateOperation("get", resourceName, representation, OperationEnum.get);
 							if (operationGet != null) {
 								operationsMap.put("get", operationGet);
 								path.setOperations(operationsMap);
@@ -423,7 +437,7 @@ public class SwaggerSpecificationCreator {
 		swaggerSpecification.setPaths(paths);
 	}
 	
-	private void CreateObjectDefintions() {
+	private void CreateObjectDefinitions() {
 		Definitions definitions = new Definitions();
 		Map<String, Definition> definitionsMap = new HashMap<String, Definition>();
 		
@@ -629,9 +643,7 @@ public class SwaggerSpecificationCreator {
 			parameter2.setDescription("subresource uuid to filter by");
 			parameter2.setRequired(true);
 			parameters.add(parameter2);
-		}
-		
-		else if (operationEnum == OperationEnum.postUpdateSubresouce) {
+		} else if (operationEnum == OperationEnum.postUpdateSubresouce) {
 			StringBuffer buffer = new StringBuffer();
 			buffer.append("Parameters: ");
 			for (String property : properties) {
