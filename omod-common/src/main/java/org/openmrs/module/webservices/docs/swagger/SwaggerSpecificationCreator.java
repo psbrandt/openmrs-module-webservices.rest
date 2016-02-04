@@ -13,6 +13,7 @@
  */
 package org.openmrs.module.webservices.docs.swagger;
 
+import java.lang.reflect.Method;
 import java.lang.reflect.Modifier;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -34,16 +35,19 @@ import org.openmrs.module.webservices.docs.ResourceRepresentation;
 import org.openmrs.module.webservices.docs.SearchHandlerDoc;
 import org.openmrs.module.webservices.docs.SearchQueryDoc;
 import org.openmrs.module.webservices.rest.SimpleObject;
+import org.openmrs.module.webservices.rest.web.RequestContext;
 import org.openmrs.module.webservices.rest.web.RestConstants;
 import org.openmrs.module.webservices.rest.web.api.RestService;
 import org.openmrs.module.webservices.rest.web.representation.Representation;
 import org.openmrs.module.webservices.rest.web.resource.api.Converter;
 import org.openmrs.module.webservices.rest.web.resource.api.SearchHandler;
+import org.openmrs.module.webservices.rest.web.resource.impl.DelegatingCrudResource;
 import org.openmrs.module.webservices.rest.web.resource.impl.DelegatingResourceDescription;
 import org.openmrs.module.webservices.rest.web.resource.impl.DelegatingResourceHandler;
 import org.openmrs.module.webservices.rest.web.resource.impl.DelegatingSubclassHandler;
 import org.openmrs.module.webservices.rest.web.resource.impl.DelegatingResourceDescription.Property;
 import org.openmrs.module.webservices.rest.web.response.ResourceDoesNotSupportOperationException;
+import org.springframework.util.ReflectionUtils;
 
 public class SwaggerSpecificationCreator {
 	
@@ -66,7 +70,7 @@ public class SwaggerSpecificationCreator {
 		synchronized (this) {
 			CreateApiDefinition();
 			AddPaths();
-			CreateObjectDefintions();
+			CreateObjectDefinitions();
 			AddResourceTags();
 		}
 		return CreateJSON();
@@ -238,13 +242,17 @@ public class SwaggerSpecificationCreator {
 					if (tempOperation.equals("GET")) {
 						if (operationType.equals("full")) {
 							//Get resource
-							Operation operationGet = new Operation();
-							
+							Operation operationGet = null;
+
 							if (resourceDoc.isSubResource()) {
 								operationGet = CreateOperation("get", resourceName, representation,
-								    OperationEnum.getSubresource);
+										OperationEnum.getSubresource);
 							} else {
-								operationGet = CreateOperation("get", resourceName, representation, OperationEnum.get);
+								Method doGetAll = ReflectionUtils.findMethod(instance.getClass(), "doGetAll", RequestContext.class);
+								if (doGetAll != null && doGetAll.getDeclaringClass()!= DelegatingCrudResource.class) { // Ensure the resource implements the fetch all operation
+								operationGet = CreateOperation("get", resourceName, representation,
+										OperationEnum.get);
+								}
 							}
 							
 							if (operationGet != null) {
@@ -342,8 +350,13 @@ public class SwaggerSpecificationCreator {
 					if (tempOperation.equals("GET")) {
 						if (operationType.equals("full")) {
 							//Get resource
+							Operation operationGet = null;
+
+							Method doGetAll = ReflectionUtils.findMethod(instance.getClass(), "doGetAll", RequestContext.class);
+							if (doGetAll != null && doGetAll.getDeclaringClass()!= DelegatingCrudResource.class) { // Ensure the resource implements the fetch all operation
+								operationGet = CreateOperation("get", resourceName, representation, OperationEnum.get);
+							}
 							
-							Operation operationGet = CreateOperation("get", resourceName, representation, OperationEnum.get);
 							if (operationGet != null) {
 								operationsMap.put("get", operationGet);
 								path.setOperations(operationsMap);
@@ -407,7 +420,7 @@ public class SwaggerSpecificationCreator {
 		swaggerSpecification.setPaths(paths);
 	}
 	
-	private void CreateObjectDefintions() {
+	private void CreateObjectDefinitions() {
 		Definitions definitions = new Definitions();
 		Map<String, Definition> definitionsMap = new HashMap<String, Definition>();
 		
