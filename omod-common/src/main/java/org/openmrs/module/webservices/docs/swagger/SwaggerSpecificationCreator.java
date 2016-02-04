@@ -11,22 +11,9 @@
  */
 package org.openmrs.module.webservices.docs.swagger;
 
-import java.lang.reflect.Method;
-import java.lang.reflect.Modifier;
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.Collection;
-import java.util.Collections;
-import java.util.Comparator;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.Map.Entry;
-
 import com.fasterxml.jackson.annotation.JsonInclude.Include;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.SerializationFeature;
-
 import org.openmrs.api.context.Context;
 import org.openmrs.module.Module;
 import org.openmrs.module.ModuleFactory;
@@ -40,11 +27,20 @@ import org.openmrs.module.webservices.rest.web.RestConstants;
 import org.openmrs.module.webservices.rest.web.api.RestService;
 import org.openmrs.module.webservices.rest.web.representation.Representation;
 import org.openmrs.module.webservices.rest.web.resource.api.Converter;
+import org.openmrs.module.webservices.rest.web.resource.api.Listable;
 import org.openmrs.module.webservices.rest.web.resource.api.SearchHandler;
-import org.openmrs.module.webservices.rest.web.resource.impl.*;
+import org.openmrs.module.webservices.rest.web.resource.impl.BaseDelegatingResource;
+import org.openmrs.module.webservices.rest.web.resource.impl.DelegatingResourceDescription;
 import org.openmrs.module.webservices.rest.web.resource.impl.DelegatingResourceDescription.Property;
+import org.openmrs.module.webservices.rest.web.resource.impl.DelegatingResourceHandler;
+import org.openmrs.module.webservices.rest.web.resource.impl.DelegatingSubclassHandler;
 import org.openmrs.module.webservices.rest.web.response.ResourceDoesNotSupportOperationException;
 import org.openmrs.util.OpenmrsConstants;
+import org.springframework.web.context.request.ServletRequestAttributes;
+
+import java.lang.reflect.Modifier;
+import java.util.*;
+import java.util.Map.Entry;
 
 public class SwaggerSpecificationCreator {
 	
@@ -109,12 +105,29 @@ public class SwaggerSpecificationCreator {
 		swaggerSpecification.setConsumes(consumes);
 	}
 	
-	private boolean TestOperationImplemented(OperationEnum operation, BaseDelegatingResource resource) {
-		Method method = null;
+	private RequestContext BuildDummyRequestContextForOperationTest(OperationEnum operation) {
+		RequestContext rc = new RequestContext();
+		rc.setRequest(((ServletRequestAttributes) RequestContextHolder.getRequestAttributes()).getRequest());
+		
 		switch (operation) {
 			case get:
-				method = ReflectionUtils.findMethod(resource.getClass(), Operation.OPERATION_GET_ALL_METHOD, RequestContext.class);
-				return method != null && !method.getDeclaringClass().getName().endsWith("DelegatingCrudResource");
+				rc.setLimit(1);
+				
+		}
+		
+		return rc;
+	}
+	
+	private boolean TestOperationImplemented(OperationEnum operation, BaseDelegatingResource resource) {
+		switch (operation) {
+			case get:
+				try {
+					((Listable) resource).getAll(BuildDummyRequestContextForOperationTest(OperationEnum.get));
+					return true;
+				}
+				catch (ResourceDoesNotSupportOperationException e) {
+					return false;
+				}
 		}
 		return true;
 	}
@@ -369,7 +382,7 @@ public class SwaggerSpecificationCreator {
 						if (operationType.equals("full")) {
 							//Get resource
 							Operation operationGet = null;
-
+							
 							if (TestOperationImplemented(OperationEnum.get, (BaseDelegatingResource) instance)) {
 								operationGet = CreateOperation("get", resourceName, representation, OperationEnum.get);
 							}
