@@ -36,6 +36,7 @@ import org.openmrs.module.webservices.rest.web.resource.impl.DelegatingResourceD
 import org.openmrs.module.webservices.rest.web.response.ResourceDoesNotSupportOperationException;
 import org.openmrs.util.OpenmrsConstants;
 import org.springframework.util.ReflectionUtils;
+import org.springframework.util.ReflectionUtils;
 
 import java.lang.reflect.Method;
 import java.lang.reflect.Modifier;
@@ -1207,7 +1208,13 @@ public class SwaggerSpecificationCreator {
 					/* For now, we do not add any description */
 					tag.setDescription("");
 					tags.put(resourceName, tag);
-				}
+		//
+		//					subTypeTag.setDescription("subtype of  " + doc.getSubtypeHandlerForResourceName());
+		//					tags.add(subTypeTag);
+		//				}
+		//
+		//			}
+		//		}
 		//				for (ResourceDoc subType : doc.getSubtypeHandlers()) {
 		//					Tag subTypeTag = new Tag();
 		//					subTypeTag.setName(subType.getName());
