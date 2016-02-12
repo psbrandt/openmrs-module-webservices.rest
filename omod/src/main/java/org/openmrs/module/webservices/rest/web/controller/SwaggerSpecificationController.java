@@ -24,7 +24,7 @@ import org.springframework.web.bind.annotation.RequestMethod;
 import org.springframework.web.bind.annotation.ResponseBody;
 
 @Controller("SwaggerSpecificationController")
-@RequestMapping("/module/webservices/rest/swaggerSpec.json")
+@RequestMapping("/module/webservices/rest/swagger.json")
 public class SwaggerSpecificationController {
 	
 	@RequestMapping(method = RequestMethod.GET)
