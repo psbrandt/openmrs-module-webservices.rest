@@ -27,7 +27,7 @@
 			jQuery(document).ready(function() {
 				jQuery("#content").addClass("swagger-section ");
 				var swaggerUi = new SwaggerUi({
-					  url:"${pageContext.request.contextPath}/module/webservices/rest/swaggerSpec.json",
+					  url:"${pageContext.request.contextPath}/module/webservices/rest/swagger.json",
 					  dom_id:"swaggerDocumentation",
 					  docExpansion: "none",
                       apisSorter: "alpha",
