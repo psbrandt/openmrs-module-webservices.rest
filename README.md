@@ -40,4 +40,4 @@ The OpenMRS API documentation is built automatically using [Swagger UI](http://s
 
 ## License
 
-[MPL 2.0](http://openmrs.org/license/)
+[MPL-2.0](http://openmrs.org/license/)
