@@ -14,6 +14,9 @@ package org.openmrs.module.webservices.docs.swagger;
 import com.fasterxml.jackson.annotation.JsonInclude.Include;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.SerializationFeature;
+import org.mockito.Mock;
+import org.mockito.Answers;
+import org.mockito.Mockito;
 import org.openmrs.api.context.Context;
 import org.openmrs.module.Module;
 import org.openmrs.module.ModuleFactory;
@@ -113,78 +116,93 @@ public class SwaggerSpecificationCreator {
 		swaggerSpecification.setConsumes(consumes);
 	}
 	
-	private boolean TestOperationImplemented(OperationEnum operation, Object resource) {
+	private boolean TestOperationImplemented(OperationEnum operation, DelegatingResourceHandler<?> resourceHandler) {
 		Method method;
 		try {
 			switch (operation) {
 				case get:
 				case getSubresource:
-					method = ReflectionUtils.findMethod(resource.getClass(), "getAll", RequestContext.class);
-
-					if(method == null) {
+					method = ReflectionUtils.findMethod(resourceHandler.getClass(), "getAll", RequestContext.class);
+					
+					if (method == null) {
 						return false;
 					} else {
-						method.invoke(resource, new RequestContext());
+						method.invoke(resourceHandler, new RequestContext());
 					}
-
+					
 					break;
 				case getWithUUID:
 				case getSubresourceWithUUID:
-					method = ReflectionUtils.findMethod(resource.getClass(), "getByUniqueId", String.class);
-
-					if(method == null) {
+					method = ReflectionUtils.findMethod(resourceHandler.getClass(), "getByUniqueId", String.class);
+					
+					if (method == null) {
 						return false;
 					} else {
-						method.invoke(resource, IMPOSSIBLE_UNIQUE_ID);
+						method.invoke(resourceHandler, IMPOSSIBLE_UNIQUE_ID);
 					}
-
+					
 					break;
 				case postCreate:
 				case postSubresource:
-					method = ReflectionUtils.findMethod(resource.getClass(), "create", SimpleObject.class, RequestContext.class);
-
-					if(method == null) {
+					method = ReflectionUtils.findMethod(resourceHandler.getClass(), "create", SimpleObject.class,
+					    RequestContext.class);
+					
+					if (method == null) {
 						return false;
 					} else {
-						method.invoke(resource, new SimpleObject(), new RequestContext());
+						Converter<Object> converter = (Converter<Object>) resourceHandler;
+						SimpleObject simpleObject = converter.asRepresentation(resourceHandler.newDelegate(),
+						    Representation.FULL);
+						
+						// unset uuid for create
+						simpleObject.removeProperty("uuid");
+						
+						method.invoke(resourceHandler, simpleObject, new RequestContext());
 					}
-
+					
 					break;
 				case postUpdate:
 				case postUpdateSubresouce:
-					method = ReflectionUtils.findMethod(resource.getClass(), "update", String.class, SimpleObject.class, RequestContext.class);
-
-					if(method == null) {
+					method = ReflectionUtils.findMethod(resourceHandler.getClass(), "update", String.class,
+					    SimpleObject.class, RequestContext.class);
+					
+					if (method == null) {
 						return false;
 					} else {
-						method.invoke(resource, IMPOSSIBLE_UNIQUE_ID, new SimpleObject(), new RequestContext());
+						Converter<Object> converter = (Converter<Object>) resourceHandler;
+						SimpleObject simpleObject = converter.asRepresentation(resourceHandler.newDelegate(),
+						    Representation.FULL);
+						
+						method.invoke(resourceHandler, IMPOSSIBLE_UNIQUE_ID, new SimpleObject(), new RequestContext());
 					}
-
+					
 					break;
 				case delete:
 				case deleteSubresource:
-					method = ReflectionUtils.findMethod(resource.getClass(), "delete", String.class, String.class, RequestContext.class);
-
-					if(method == null) {
+					method = ReflectionUtils.findMethod(resourceHandler.getClass(), "delete", String.class, String.class,
+					    RequestContext.class);
+					
+					if (method == null) {
 						return false;
 					} else {
-						method.invoke(resource, IMPOSSIBLE_UNIQUE_ID, new String(), new RequestContext());
+						method.invoke(resourceHandler, IMPOSSIBLE_UNIQUE_ID, new String(), new RequestContext());
 					}
 					break;
 				case purge:
 				case purgeSubresource:
-					method = ReflectionUtils.findMethod(resource.getClass(), "purge", String.class, RequestContext.class);
-
-					if(method == null) {
+					method = ReflectionUtils.findMethod(resourceHandler.getClass(), "purge", String.class,
+					    RequestContext.class);
+					
+					if (method == null) {
 						return false;
 					} else {
-						method.invoke(resource, IMPOSSIBLE_UNIQUE_ID, new RequestContext());
+						method.invoke(resourceHandler, IMPOSSIBLE_UNIQUE_ID, new RequestContext());
 					}
 			}
 			return true;
 		}
 		catch (Exception e) {
-			if(e.getCause() instanceof ResourceDoesNotSupportOperationException) {
+			if (e.getCause() instanceof ResourceDoesNotSupportOperationException) {
 				return false;
 			} else {
 				return true;
@@ -218,7 +236,12 @@ public class SwaggerSpecificationCreator {
 		ResourceRepresentation getRepresentation = null;
 		try {
 			Converter<Object> converter = (Converter<Object>) resourceHandler;
-			SimpleObject simpleObject = converter.asRepresentation(delegate, Representation.FULL);
+			
+			Object delegateMock = Mockito.mock(delegate.getClass(), Answers.RETURNS_DEEP_STUBS.get());
+			
+			//(delegate.getClass(), Answers.RETURNS_DEEP_STUBS);
+			
+			SimpleObject simpleObject = converter.asRepresentation(delegateMock, Representation.FULL);
 			getRepresentation = new ResourceRepresentation("GET", simpleObject.keySet());
 		}
 		catch (Exception e) {
@@ -431,9 +454,11 @@ public class SwaggerSpecificationCreator {
 		
 		if (TestOperationImplemented(OperationEnum.delete, resourceHandler)) {
 			if (resourceParentName == null) {
-				deleteOperation = CreateOperation("delete", resourceName, null, OperationEnum.delete);
+				deleteOperation = CreateOperation("delete", resourceName, new ResourceRepresentation("delete",
+				        new ArrayList()), OperationEnum.delete);
 			} else {
-				deleteOperation = CreateOperation("delete", resourceName, null, OperationEnum.deleteSubresource);
+				deleteOperation = CreateOperation("delete", resourceName, new ResourceRepresentation("delete",
+				        new ArrayList()), OperationEnum.deleteSubresource);
 			}
 		}
 		
@@ -459,29 +484,31 @@ public class SwaggerSpecificationCreator {
 	 * @return
 	 */
 	private Path buildPurgePath(Path path, DelegatingResourceHandler<?> resourceHandler, String resourceName,
-			String resourceParentName) {
-
+	        String resourceParentName) {
+		
 		Operation purgeOperation = null;
-
+		
 		if (TestOperationImplemented(OperationEnum.purge, resourceHandler)) {
 			if (resourceParentName == null) {
-				purgeOperation = CreateOperation("delete", resourceName, null, OperationEnum.purge);
+				purgeOperation = CreateOperation("delete", resourceName,
+				    new ResourceRepresentation("purge", new ArrayList()), OperationEnum.purge);
 			} else {
-				purgeOperation = CreateOperation("delete", resourceName, null, OperationEnum.purgeSubresource);
+				purgeOperation = CreateOperation("delete", resourceName,
+				    new ResourceRepresentation("purge", new ArrayList()), OperationEnum.purgeSubresource);
 			}
 		}
-
+		
 		if (purgeOperation != null) {
 			Map<String, Operation> operationsMap = path.getOperations();
-
+			
 			String tag = resourceParentName == null ? resourceName : resourceParentName;
 			addResourceTag(tag);
-
+			
 			purgeOperation.setTags(Arrays.asList(tag));
 			operationsMap.put("delete", purgeOperation);
 			path.setOperations(operationsMap);
 		}
-
+		
 		return path;
 	}
 	
@@ -549,7 +576,7 @@ public class SwaggerSpecificationCreator {
 			
 			Path uuidPath = new Path();
 			uuidPath.setOperations(new HashMap<String, Operation>());
-
+			
 			Path purgePath = new Path();
 			purgePath.setOperations(new HashMap<String, Operation>());
 			
@@ -653,319 +680,6 @@ public class SwaggerSpecificationCreator {
 		paths.setPaths(pathMap);
 		swaggerSpecification.setPaths(paths);
 		swaggerSpecification.setTags(new ArrayList(tags.values()));
-	}
-	
-	private void AddPaths() {
-		List<DelegatingResourceHandler<?>> resourceHandlers = Context.getService(RestService.class).getResourceHandlers();
-		Paths paths = new Paths();
-		
-		Map<String, Path> pathMap = new HashMap<String, Path>();
-		
-		Collections.sort(resourceHandlers, new Comparator<DelegatingResourceHandler<?>>() {
-			
-			@Override
-			public int compare(DelegatingResourceHandler<?> left, DelegatingResourceHandler<?> right) {
-				return isSubclass(left).compareTo(isSubclass(right));
-			}
-			
-			private Boolean isSubclass(DelegatingResourceHandler<?> resourceHandler) {
-				return resourceHandler.getClass().getAnnotation(
-				    org.openmrs.module.webservices.rest.web.annotation.SubResource.class) != null;
-			}
-		});
-		
-		for (DelegatingResourceHandler<?> resourceHandler : resourceHandlers) {
-			
-			Object delegate = null;
-			try {
-				//System.out.println("Class " + resourceHandler.newDelegate().getClass());
-				if (!Modifier.isInterface(resourceHandler.newDelegate().getClass().getModifiers())
-				        && !Modifier.isAbstract(resourceHandler.newDelegate().getClass().getModifiers())) {
-					delegate = resourceHandler.newDelegate();
-				}
-			}
-			catch (Exception ex) {
-				continue;
-			}
-			if (delegate == null) {
-				// TODO: handle resources that don't implement newDelegate(), e.g. ConceptSearchResource1_9, all subclasses of EvaluatedResource in the reporting rest module
-				continue;
-			}
-			
-			String resourceClassname = delegate.getClass().getSimpleName();
-			if (resourceClassname.equals("UserAndPassword1_8")) {
-				resourceClassname = "User"; //Work-around for UserAndPassword to be displayed as User
-			} else if (resourceClassname.equals("CohortMember1_8")) {
-				resourceClassname = "CohortMember";
-			} else if (resourceClassname.equals("IncomingHl7Message1_8")) {
-				resourceClassname = "HL7";
-			}
-			
-			String subResourceForClass = null;
-			ResourceDoc resourceDoc = new ResourceDoc(resourceClassname);
-			resourceDoc.setResourceVersion(resourceHandler.getResourceVersion());
-			org.openmrs.module.webservices.rest.web.annotation.Resource resourceAnnotation = ((org.openmrs.module.webservices.rest.web.annotation.Resource) resourceHandler
-			        .getClass().getAnnotation(org.openmrs.module.webservices.rest.web.annotation.Resource.class));
-			if (resourceAnnotation != null) {
-				resourceDoc.setResourceName(resourceAnnotation.name());
-				
-				String[] supportedVersions = resourceAnnotation.supportedOpenmrsVersions();
-				List<String> supportedVersionsList = new ArrayList<String>();
-				
-				for (String version : supportedVersions) {
-					supportedVersionsList.add(version);
-				}
-				
-				resourceDoc.setSupportedOpenMRSVersion(supportedVersionsList);
-				
-			} else {
-				//this is a subResource, use the name of the collection
-				org.openmrs.module.webservices.rest.web.annotation.SubResource subResourceAnnotation = ((org.openmrs.module.webservices.rest.web.annotation.SubResource) resourceHandler
-				        .getClass().getAnnotation(org.openmrs.module.webservices.rest.web.annotation.SubResource.class));
-				if (subResourceAnnotation != null) {
-					org.openmrs.module.webservices.rest.web.annotation.Resource parentResourceAnnotation = ((org.openmrs.module.webservices.rest.web.annotation.Resource) subResourceAnnotation
-					        .parent().getAnnotation(org.openmrs.module.webservices.rest.web.annotation.Resource.class));
-					
-					resourceDoc.setResourceName(parentResourceAnnotation.name());
-					resourceDoc.setSubResourceName(subResourceAnnotation.path());
-					
-					subResourceForClass = parentResourceAnnotation.supportedClass().getSimpleName();
-				}
-			}
-			
-			Object instance = resourceHandler;
-			
-			//GET representations
-			Representation[] representations = new Representation[] { Representation.REF, Representation.DEFAULT,
-			        Representation.FULL };
-			
-			for (Representation representation : representations) {
-				if (instance instanceof Converter) {
-					try {
-						@SuppressWarnings("unchecked")
-						Converter<Object> converter = (Converter<Object>) instance;
-						SimpleObject simpleObject = converter.asRepresentation(delegate, representation);
-						resourceDoc.addRepresentation(new ResourceRepresentation(
-						        "GET " + representation.getRepresentation(), simpleObject.keySet()));
-					}
-					catch (Exception e) {
-						resourceDoc.addRepresentation(new ResourceRepresentation(
-						        "GET " + representation.getRepresentation(), Arrays.asList("Not supported")));
-					}
-				} else {
-					resourceDoc.addRepresentation(new ResourceRepresentation("GET " + representation.getRepresentation(),
-					        Arrays.asList("Not supported")));
-				}
-			}
-			
-			//POST create representations
-			try {
-				DelegatingResourceDescription description = resourceHandler.getCreatableProperties();
-				List<String> properties = getPOSTProperties(description);
-				resourceDoc.addRepresentation(new ResourceRepresentation("POST create", properties));
-			}
-			catch (ResourceDoesNotSupportOperationException e) {
-				resourceDoc.addRepresentation(new ResourceRepresentation("POST create", Arrays.asList("Not supported")));
-			}
-			
-			//POST update representations
-			try {
-				DelegatingResourceDescription description = resourceHandler.getUpdatableProperties();
-				List<String> properties = getPOSTProperties(description);
-				resourceDoc.addRepresentation(new ResourceRepresentation("POST update", properties));
-			}
-			catch (ResourceDoesNotSupportOperationException e) {
-				resourceDoc.addRepresentation(new ResourceRepresentation("POST update", Arrays.asList("Not supported")));
-			}
-			
-			Path path = new Path();
-			Path path2 = new Path();
-			Path path3 = new Path();
-			Path path4 = new Path();
-			Map<String, Operation> operationsMap = new HashMap<String, Operation>();
-			Map<String, Operation> operationsWithUUIDMap = new HashMap<String, Operation>();
-			
-			for (ResourceRepresentation representation : resourceDoc.getRepresentations()) {
-				String resourceLongName = resourceDoc.getResourceName();
-				String resourceURL = resourceDoc.getUrl();
-				if (resourceLongName != null) {
-					String tempRepresentationName = representation.getName();
-					String tempOperation = (tempRepresentationName.split(" "))[0];
-					String operationType = (tempRepresentationName.split(" "))[1];
-					
-					String resourceName = (resourceLongName.split("/"))[1];
-					
-					//For Get Representation
-					if (tempOperation.equals("GET")) {
-						if (operationType.equals("full")) {
-							//Get resource
-							Operation operationGet = new Operation();
-							
-							if (resourceDoc.isSubResource()) {
-								operationGet = CreateOperation("get", resourceName, representation,
-								    OperationEnum.getSubresource);
-							} else {
-								operationGet = CreateOperation("get", resourceName, representation, OperationEnum.get);
-							}
-							
-							if (operationGet != null) {
-								operationsMap.put("get", operationGet);
-								path.setOperations(operationsMap);
-								if (resourceDoc.isSubResource()) {
-									pathMap.put("/" + resourceName + "/{uuid}/" + resourceDoc.getSubResourceName(), path);
-								} else {
-									pathMap.put("/" + resourceName, path);
-								}
-								
-							}
-							if (HasSearchHandler(resourceName)) {
-								List<Operation> searchHandlerOperations = CreateSearchHandlersOperations(resourceName);
-								
-								for (Operation operation : searchHandlerOperations) {
-									Map<String, Operation> searchHandlerMap = new HashMap<String, Operation>();
-									searchHandlerMap.put("get", operation);
-									Path searchHandlerPath = new Path();
-									searchHandlerPath.setOperations(searchHandlerMap);
-									StringBuffer buffer = new StringBuffer();
-									for (int i = 0; i < operation.getParameters().size(); i++) {
-										buffer.append(operation.getParameters().get(i).getName());
-										if (i != operation.getParameters().size() - 1) {
-											buffer.append(",");
-										}
-									}
-									pathMap.put("/" + resourceName + " (Search by parameters: " + buffer.toString() + ")",
-									    searchHandlerPath);
-								}
-							}
-							
-							//Get resource/{uuid}
-							Operation operationGetWithUUID = new Operation();
-							operationGetWithUUID = CreateOperation("get", resourceName, representation,
-							    OperationEnum.getWithUUID);
-							
-							if (operationGetWithUUID != null) {
-								operationsWithUUIDMap.put("get", operationGetWithUUID);
-								path2.setOperations(operationsWithUUIDMap);
-								
-								pathMap.put("/" + resourceName + "/{uuid}", path2);
-								
-							}
-							
-						}
-					}// For Post Representation
-					else {
-						//Post create
-						if (operationType.equals("create")) {
-							Operation operationPostCreate = new Operation();
-							if (resourceDoc.isSubResource())
-								operationPostCreate = CreateOperation("post", resourceName, representation,
-								    OperationEnum.postSubresource);
-							else
-								operationPostCreate = CreateOperation("post", resourceName, representation,
-								    OperationEnum.postCreate);
-							
-							if (operationPostCreate != null) {
-								operationsMap.put("post", operationPostCreate);
-								path3.setOperations(operationsMap);
-								
-								if (resourceDoc.isSubResource()) {
-									pathMap.put("/" + resourceName + "/{uuid}/" + resourceDoc.getSubResourceName(), path3);
-								} else {
-									pathMap.put("/" + resourceName, path3);
-								}
-							}
-							
-						} else {
-							//Post update
-							Operation operationPostUpdate = new Operation();
-							
-							operationPostUpdate = CreateOperation("post", resourceName, representation,
-							    OperationEnum.postUpdate);
-							
-							if (operationPostUpdate != null) {
-								operationsWithUUIDMap.put("post", operationPostUpdate);
-								path4.setOperations(operationsWithUUIDMap);
-								
-								pathMap.put("/" + resourceName + "/{uuid}", path4);
-								
-							}
-						}
-					}
-				} else {
-					//This is a subtype, do the same thing
-					String tempRepresentationName = representation.getName();
-					String tempOperation = (tempRepresentationName.split(" "))[0];
-					String operationType = (tempRepresentationName.split(" "))[1];
-					
-					String resourceName = resourceDoc.getName();
-					
-					//For Get Representation
-					if (tempOperation.equals("GET")) {
-						if (operationType.equals("full")) {
-							//Get resource
-							
-							Operation operationGet = CreateOperation("get", resourceName, representation, OperationEnum.get);
-							if (operationGet != null) {
-								operationsMap.put("get", operationGet);
-								path.setOperations(operationsMap);
-								pathMap.put("/" + resourceName, path);
-							}
-							
-							//Get resource/{uuid}
-							Operation operationGetWithUUID = new Operation();
-							operationGetWithUUID = CreateOperation("get", resourceName, representation,
-							    OperationEnum.getWithUUID);
-							
-							if (operationGetWithUUID != null) {
-								operationsWithUUIDMap.put("get", operationGetWithUUID);
-								path2.setOperations(operationsWithUUIDMap);
-								
-								pathMap.put("/" + resourceName + "/{uuid}", path2);
-								
-							}
-							
-						}
-					}// For Post Representation
-					else {
-						//Post create
-						if (operationType.equals("create")) {
-							
-							Operation operationPostCreate = CreateOperation("post", resourceName, representation,
-							    OperationEnum.postCreate);
-							
-							if (operationPostCreate != null) {
-								operationsMap.put("post", operationPostCreate);
-								path3.setOperations(operationsMap);
-								
-								pathMap.put("/" + resourceName, path3);
-							}
-							
-						} else {
-							//Post update
-							Operation operationPostUpdate = CreateOperation("post", resourceName, representation,
-							    OperationEnum.postUpdate);
-							
-							if (operationPostUpdate != null) {
-								operationsWithUUIDMap.put("post", operationPostUpdate);
-								path4.setOperations(operationsWithUUIDMap);
-								
-								pathMap.put("/" + resourceName + "/{uuid}", path4);
-							}
-						}
-					}
-					
-					Class<?> resourceClass = ((DelegatingSubclassHandler<?, ?>) resourceHandler).getSuperclass();
-					instance = Context.getService(RestService.class).getResourceBySupportedClass(resourceClass);
-					
-					resourceDoc.setSubtypeHandlerForResourceName(resourceClass.getSimpleName());
-					resourceDoc.addSubtypeHandler(new ResourceDoc(resourceDoc.getName()));
-					
-				}
-				resourceDocList.add(resourceDoc);
-			}
-		}
-		paths.setPaths(pathMap);
-		swaggerSpecification.setPaths(paths);
 	}
 	
 	private void CreateObjectDefinitions() {
@@ -1216,6 +930,27 @@ public class SwaggerSpecificationCreator {
 			parameter3.setDescription("subresource uuid to filter by");
 			
 			parameters.add(parameter3);
+		} else if (operationEnum == OperationEnum.delete || operationEnum == OperationEnum.deleteSubresource) {
+			Parameter parameter = new Parameter();
+			parameter.setName("uuid");
+			parameter.setIn("path");
+			parameter.setDescription("uuid to delete");
+			parameter.setRequired(true);
+			parameters.add(parameter);
+		} else if (operationEnum == OperationEnum.purge || operationEnum == OperationEnum.purgeSubresource) {
+			Parameter parameter = new Parameter();
+			parameter.setName("uuid");
+			parameter.setIn("path");
+			parameter.setDescription("uuid to purge");
+			parameter.setRequired(true);
+			parameters.add(parameter);
+			
+			Parameter parameter2 = new Parameter();
+			parameter2.setName("purge");
+			parameter2.setIn("query");
+			parameter2.setDescription("purge flag");
+			parameter2.setRequired(true);
+			parameters.add(parameter2);
 		}
 		
 		return parameters;
@@ -1316,14 +1051,12 @@ public class SwaggerSpecificationCreator {
 		operation.setProduces(produces);
 		List<Parameter> parameters = new ArrayList<Parameter>();
 		
-		if (representation != null) {
-			parameters = getParametersList(representation.getProperties(), resourceName, operationEnum);
-			
-			if (parameters == null)
-				return null;
-			
-			operation.setParameters(parameters);
-		}
+		parameters = getParametersList(representation.getProperties(), resourceName, operationEnum);
+		
+		if (parameters == null)
+			return null;
+		
+		operation.setParameters(parameters);
 		
 		Response statusOKResponse = new Response();
 		statusOKResponse.setDescription(resourceName + " response");
