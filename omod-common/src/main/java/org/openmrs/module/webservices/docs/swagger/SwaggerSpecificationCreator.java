@@ -14,38 +14,38 @@ package org.openmrs.module.webservices.docs.swagger;
 import com.fasterxml.jackson.annotation.JsonInclude.Include;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.SerializationFeature;
-import org.mockito.Mock;
-import org.mockito.Answers;
-import org.mockito.Mockito;
+import org.apache.commons.logging.Log;
+import org.apache.log4j.Level;
+import org.apache.log4j.LogManager;
+import org.apache.log4j.Logger;
 import org.openmrs.api.context.Context;
 import org.openmrs.module.Module;
-import org.openmrs.module.ModuleFactory;
 import org.openmrs.module.webservices.docs.ResourceDoc;
 import org.openmrs.module.webservices.docs.ResourceRepresentation;
 import org.openmrs.module.webservices.docs.SearchHandlerDoc;
 import org.openmrs.module.webservices.docs.SearchQueryDoc;
 import org.openmrs.module.webservices.rest.SimpleObject;
-import org.openmrs.module.webservices.rest.util.ReflectionUtil;
 import org.openmrs.module.webservices.rest.web.RequestContext;
 import org.openmrs.module.webservices.rest.web.RestConstants;
 import org.openmrs.module.webservices.rest.web.annotation.Resource;
 import org.openmrs.module.webservices.rest.web.annotation.SubResource;
 import org.openmrs.module.webservices.rest.web.api.RestService;
 import org.openmrs.module.webservices.rest.web.representation.Representation;
-import org.openmrs.module.webservices.rest.web.resource.api.Converter;
-import org.openmrs.module.webservices.rest.web.resource.api.Listable;
 import org.openmrs.module.webservices.rest.web.resource.api.SearchHandler;
-import org.openmrs.module.webservices.rest.web.resource.impl.*;
+import org.openmrs.module.webservices.rest.web.resource.impl.DelegatingResourceDescription;
 import org.openmrs.module.webservices.rest.web.resource.impl.DelegatingResourceDescription.Property;
+import org.openmrs.module.webservices.rest.web.resource.impl.DelegatingResourceHandler;
+import org.openmrs.module.webservices.rest.web.resource.impl.DelegatingSubclassHandler;
 import org.openmrs.module.webservices.rest.web.response.ResourceDoesNotSupportOperationException;
 import org.openmrs.util.OpenmrsConstants;
 import org.springframework.util.ReflectionUtils;
-import org.springframework.util.ReflectionUtils;
 
+import java.io.OutputStream;
+import java.io.PrintStream;
 import java.lang.reflect.Method;
-import java.lang.reflect.Modifier;
 import java.util.*;
 import java.util.Map.Entry;
+import java.util.logging.Handler;
 
 public class SwaggerSpecificationCreator {
 	
@@ -57,7 +57,11 @@ public class SwaggerSpecificationCreator {
 	
 	private static List<SearchHandlerDoc> searchHandlerDocs;
 	
-	private static String IMPOSSIBLE_UNIQUE_ID = "a--b";
+	PrintStream originalErr;
+	
+	PrintStream originalOut;
+	
+	HashMap<Integer, Level> originalLevels = new HashMap<Integer, Level>();
 	
 	private Map<String, Tag> tags;
 	
@@ -71,23 +75,59 @@ public class SwaggerSpecificationCreator {
 	
 	public String BuildJSON() {
 		synchronized (this) {
+			
+			originalErr = System.err;
+			
+			toggleLogs(RestConstants.SWAGGER_LOGS_OFF);
 			CreateApiDefinition();
 			BetterAddPaths();
 			//AddPaths();
 			CreateObjectDefinitions();
 			//AddResourceTags();
+			//toggleLogs(RestConstants.SWAGGER_LOGS_ON);
 		}
 		return CreateJSON();
 	}
 	
-	private List<ModuleVersion> GetModuleVersions() {
-		List<ModuleVersion> moduleVersions = new ArrayList<ModuleVersion>();
-		
-		for (Module module : ModuleFactory.getLoadedModules()) {
-			moduleVersions.add(new ModuleVersion(module.getModuleId(), module.getVersion()));
+	private void toggleLogs(boolean targetState) {
+		if (Context.getAdministrationService().getGlobalProperty(RestConstants.SWAGGER_QUIET_DOCS_GLOBAL_PROPERTY_NAME)
+		        .equals("true")) {
+			if (targetState == RestConstants.SWAGGER_LOGS_OFF) {
+				// turn off the log4j loggers
+				List<Logger> loggers = Collections.<Logger> list(LogManager.getCurrentLoggers());
+				loggers.add(LogManager.getRootLogger());
+				for (Logger logger : loggers) {
+					originalLevels.put(logger.hashCode(), logger.getLevel());
+					logger.setLevel(Level.OFF);
+				}
+				
+				// silence stderr and stdout
+				originalErr = System.err;
+				System.setErr(new PrintStream(new OutputStream() {
+					
+					public void write(int b) {
+						// noop
+					}
+				}));
+				
+				originalOut = System.out;
+				System.setOut(new PrintStream(new OutputStream() {
+					
+					public void write(int b) {
+						// noop
+					}
+				}));
+			} else if (targetState == RestConstants.SWAGGER_LOGS_ON) {
+				List<Logger> loggers = Collections.<Logger> list(LogManager.getCurrentLoggers());
+				loggers.add(LogManager.getRootLogger());
+				for (Logger logger : loggers) {
+					logger.setLevel(originalLevels.get(logger.hashCode()));
+				}
+				
+				System.setErr(originalErr);
+				System.setOut(originalOut);
+			}
 		}
-		
-		return moduleVersions;
 	}
 	
 	private void CreateApiDefinition() {
@@ -121,13 +161,23 @@ public class SwaggerSpecificationCreator {
 		try {
 			switch (operation) {
 				case get:
-				case getSubresource:
 					method = ReflectionUtils.findMethod(resourceHandler.getClass(), "getAll", RequestContext.class);
 					
 					if (method == null) {
 						return false;
 					} else {
 						method.invoke(resourceHandler, new RequestContext());
+					}
+					
+					break;
+				case getSubresource:
+					method = ReflectionUtils.findMethod(resourceHandler.getClass(), "getAll", String.class,
+					    RequestContext.class);
+					
+					if (method == null) {
+						return false;
+					} else {
+						method.invoke(resourceHandler, RestConstants.SWAGGER_IMPOSSIBLE_UNIQUE_ID, new RequestContext());
 					}
 					
 					break;
@@ -138,71 +188,130 @@ public class SwaggerSpecificationCreator {
 					if (method == null) {
 						return false;
 					} else {
-						method.invoke(resourceHandler, IMPOSSIBLE_UNIQUE_ID);
+						method.invoke(resourceHandler, RestConstants.SWAGGER_IMPOSSIBLE_UNIQUE_ID);
 					}
 					
 					break;
 				case postCreate:
-				case postSubresource:
 					method = ReflectionUtils.findMethod(resourceHandler.getClass(), "create", SimpleObject.class,
 					    RequestContext.class);
 					
 					if (method == null) {
 						return false;
 					} else {
-						Converter<Object> converter = (Converter<Object>) resourceHandler;
-						SimpleObject simpleObject = converter.asRepresentation(resourceHandler.newDelegate(),
-						    Representation.FULL);
-						
-						// unset uuid for create
-						simpleObject.removeProperty("uuid");
-						
-						method.invoke(resourceHandler, simpleObject, new RequestContext());
+						try {
+							// to avoid saving data to the database, we pass a null SimpleObject
+							method.invoke(resourceHandler, null, new RequestContext());
+						}
+						catch (ResourceDoesNotSupportOperationException re) {
+							return false;
+						}
+						catch (Exception ee) {
+							// if the resource doesn't immediate throw ResourceDoesNotSupportOperationException
+							// then we need to check if it's thrown in the save() method
+							resourceHandler.save(null);
+						}
+					}
+					
+					break;
+				case postSubresource:
+					method = ReflectionUtils.findMethod(resourceHandler.getClass(), "create", String.class,
+					    SimpleObject.class, RequestContext.class);
+					
+					if (method == null) {
+						return false;
+					} else {
+						try {
+							// to avoid saving data to the database, we pass a null SimpleObject
+							method.invoke(resourceHandler, null, RestConstants.SWAGGER_IMPOSSIBLE_UNIQUE_ID,
+							    new RequestContext());
+						}
+						catch (ResourceDoesNotSupportOperationException re) {
+							return false;
+						}
+						catch (Exception ee) {
+							// if the resource doesn't immediate throw ResourceDoesNotSupportOperationException
+							// then we need to check if it's thrown in the save() method
+							resourceHandler.save(null);
+						}
 					}
 					
 					break;
 				case postUpdate:
-				case postUpdateSubresouce:
 					method = ReflectionUtils.findMethod(resourceHandler.getClass(), "update", String.class,
 					    SimpleObject.class, RequestContext.class);
 					
 					if (method == null) {
 						return false;
 					} else {
-						Converter<Object> converter = (Converter<Object>) resourceHandler;
-						SimpleObject simpleObject = converter.asRepresentation(resourceHandler.newDelegate(),
-						    Representation.FULL);
-						
-						method.invoke(resourceHandler, IMPOSSIBLE_UNIQUE_ID, new SimpleObject(), new RequestContext());
+						method.invoke(resourceHandler, RestConstants.SWAGGER_IMPOSSIBLE_UNIQUE_ID,
+						    buildPOSTUpdateSimpleObject(resourceHandler), new RequestContext());
+					}
+					
+					break;
+				case postUpdateSubresouce:
+					method = ReflectionUtils.findMethod(resourceHandler.getClass(), "update", String.class, String.class,
+					    SimpleObject.class, RequestContext.class);
+					
+					if (method == null) {
+						return false;
+					} else {
+						method.invoke(resourceHandler, RestConstants.SWAGGER_IMPOSSIBLE_UNIQUE_ID,
+						    RestConstants.SWAGGER_IMPOSSIBLE_UNIQUE_ID, buildPOSTUpdateSimpleObject(resourceHandler),
+						    new RequestContext());
 					}
 					
 					break;
 				case delete:
-				case deleteSubresource:
 					method = ReflectionUtils.findMethod(resourceHandler.getClass(), "delete", String.class, String.class,
 					    RequestContext.class);
 					
 					if (method == null) {
 						return false;
 					} else {
-						method.invoke(resourceHandler, IMPOSSIBLE_UNIQUE_ID, new String(), new RequestContext());
+						method.invoke(resourceHandler, RestConstants.SWAGGER_IMPOSSIBLE_UNIQUE_ID, new String(),
+						    new RequestContext());
+					}
+					
+					break;
+				case deleteSubresource:
+					method = ReflectionUtils.findMethod(resourceHandler.getClass(), "delete", String.class, String.class,
+					    String.class, RequestContext.class);
+					
+					if (method == null) {
+						return false;
+					} else {
+						method.invoke(resourceHandler, RestConstants.SWAGGER_IMPOSSIBLE_UNIQUE_ID,
+						    RestConstants.SWAGGER_IMPOSSIBLE_UNIQUE_ID, new String(), new RequestContext());
 					}
 					break;
 				case purge:
-				case purgeSubresource:
 					method = ReflectionUtils.findMethod(resourceHandler.getClass(), "purge", String.class,
 					    RequestContext.class);
 					
 					if (method == null) {
 						return false;
 					} else {
-						method.invoke(resourceHandler, IMPOSSIBLE_UNIQUE_ID, new RequestContext());
+						method.invoke(resourceHandler, RestConstants.SWAGGER_IMPOSSIBLE_UNIQUE_ID, new RequestContext());
+					}
+					
+					break;
+				case purgeSubresource:
+					method = ReflectionUtils.findMethod(resourceHandler.getClass(), "purge", String.class, String.class,
+					    RequestContext.class);
+					
+					if (method == null) {
+						return false;
+					} else {
+						method.invoke(resourceHandler, RestConstants.SWAGGER_IMPOSSIBLE_UNIQUE_ID,
+						    RestConstants.SWAGGER_IMPOSSIBLE_UNIQUE_ID, new RequestContext());
 					}
 			}
 			return true;
 		}
 		catch (Exception e) {
-			if (e.getCause() instanceof ResourceDoesNotSupportOperationException) {
+			if (e instanceof ResourceDoesNotSupportOperationException
+			        || e.getCause() instanceof ResourceDoesNotSupportOperationException) {
 				return false;
 			} else {
 				return true;
@@ -232,21 +341,14 @@ public class SwaggerSpecificationCreator {
 		}
 	}
 	
-	private ResourceRepresentation getGETRepresentation(DelegatingResourceHandler<?> resourceHandler, Object delegate) {
+	private ResourceRepresentation getGETRepresentation(DelegatingResourceHandler<?> resourceHandler) {
 		ResourceRepresentation getRepresentation = null;
 		try {
-			Converter<Object> converter = (Converter<Object>) resourceHandler;
-			
-			Object delegateMock = Mockito.mock(delegate.getClass(), Answers.RETURNS_DEEP_STUBS.get());
-			
-			//(delegate.getClass(), Answers.RETURNS_DEEP_STUBS);
-			
-			SimpleObject simpleObject = converter.asRepresentation(delegateMock, Representation.FULL);
-			getRepresentation = new ResourceRepresentation("GET", simpleObject.keySet());
+			getRepresentation = new ResourceRepresentation("GET", resourceHandler
+			        .getRepresentationDescription(Representation.FULL).getProperties().keySet());
 		}
 		catch (Exception e) {
 			// don't panic
-			e.printStackTrace();
 		}
 		return getRepresentation;
 	}
@@ -262,6 +364,26 @@ public class SwaggerSpecificationCreator {
 			// don't panic
 		}
 		return postCreateRepresentation;
+	}
+	
+	private SimpleObject buildPOSTCreateSimpleObject(DelegatingResourceHandler<?> resourceHandler) {
+		SimpleObject simpleObject = new SimpleObject();
+		
+		for (String property : resourceHandler.getCreatableProperties().getProperties().keySet()) {
+			simpleObject.put(property, property);
+		}
+		
+		return simpleObject;
+	}
+	
+	private SimpleObject buildPOSTUpdateSimpleObject(DelegatingResourceHandler<?> resourceHandler) {
+		SimpleObject simpleObject = new SimpleObject();
+		
+		for (String property : resourceHandler.getUpdatableProperties().getProperties().keySet()) {
+			simpleObject.put(property, property);
+		}
+		
+		return simpleObject;
 	}
 	
 	private ResourceRepresentation getPOSTUpdateRepresentation(DelegatingResourceHandler<?> resourceHandler) {
@@ -281,22 +403,23 @@ public class SwaggerSpecificationCreator {
 	 * Build the Path object for doing a fetch all operation at /resource
 	 * 
 	 * @param resourceHandler
-	 * @param delegate
 	 * @param resourceName
 	 * @param resourceParentName
 	 */
-	private Path buildFetchAllPath(Path path, DelegatingResourceHandler<?> resourceHandler, Object delegate,
-	        String resourceName, String resourceParentName) {
+	private Path buildFetchAllPath(Path path, DelegatingResourceHandler<?> resourceHandler, String resourceName,
+	        String resourceParentName) {
 		
-		ResourceRepresentation getRepresentation = getGETRepresentation(resourceHandler, delegate);
+		ResourceRepresentation getRepresentation = getGETRepresentation(resourceHandler);
 		
 		if (getRepresentation != null) {
 			Operation getOperation = null;
-			
-			if (TestOperationImplemented(OperationEnum.get, resourceHandler)) {
-				if (resourceParentName == null) {
+			if (resourceParentName == null) {
+				if (TestOperationImplemented(OperationEnum.get, resourceHandler)) {
+					
 					getOperation = CreateOperation("get", resourceName, getRepresentation, OperationEnum.get);
-				} else {
+				}
+			} else {
+				if (TestOperationImplemented(OperationEnum.getSubresource, resourceHandler)) {
 					getOperation = CreateOperation("get", resourceName, getRepresentation, OperationEnum.getSubresource);
 				}
 			}
@@ -320,15 +443,14 @@ public class SwaggerSpecificationCreator {
 	 * Build the Path object for doing a GET at /resource/uuid
 	 * 
 	 * @param resourceHandler
-	 * @param delegate
 	 * @param resourceName
 	 * @param resourceParentName
 	 * @return
 	 */
-	private Path buildGetWithUUIDPath(Path path, DelegatingResourceHandler<?> resourceHandler, Object delegate,
-	        String resourceName, String resourceParentName) {
+	private Path buildGetWithUUIDPath(Path path, DelegatingResourceHandler<?> resourceHandler, String resourceName,
+	        String resourceParentName) {
 		
-		ResourceRepresentation getRepresentation = getGETRepresentation(resourceHandler, delegate);
+		ResourceRepresentation getRepresentation = getGETRepresentation(resourceHandler);
 		
 		if (getRepresentation != null) {
 			Operation getOperation = null;
@@ -373,11 +495,13 @@ public class SwaggerSpecificationCreator {
 		if (postCreateRepresentation != null) {
 			Operation postCreateOperation = null;
 			
-			if (TestOperationImplemented(OperationEnum.postCreate, resourceHandler)) {
-				if (resourceParentName == null) {
+			if (resourceParentName == null) {
+				if (TestOperationImplemented(OperationEnum.postCreate, resourceHandler)) {
 					postCreateOperation = CreateOperation("post", resourceName, postCreateRepresentation,
 					    OperationEnum.postCreate);
-				} else {
+				}
+			} else {
+				if (TestOperationImplemented(OperationEnum.postSubresource, resourceHandler)) {
 					postCreateOperation = CreateOperation("post", resourceName, postCreateRepresentation,
 					    OperationEnum.postSubresource);
 				}
@@ -452,11 +576,13 @@ public class SwaggerSpecificationCreator {
 		
 		Operation deleteOperation = null;
 		
-		if (TestOperationImplemented(OperationEnum.delete, resourceHandler)) {
-			if (resourceParentName == null) {
+		if (resourceParentName == null) {
+			if (TestOperationImplemented(OperationEnum.delete, resourceHandler)) {
 				deleteOperation = CreateOperation("delete", resourceName, new ResourceRepresentation("delete",
 				        new ArrayList()), OperationEnum.delete);
-			} else {
+			}
+		} else {
+			if (TestOperationImplemented(OperationEnum.deleteSubresource, resourceHandler)) {
 				deleteOperation = CreateOperation("delete", resourceName, new ResourceRepresentation("delete",
 				        new ArrayList()), OperationEnum.deleteSubresource);
 			}
@@ -488,11 +614,13 @@ public class SwaggerSpecificationCreator {
 		
 		Operation purgeOperation = null;
 		
-		if (TestOperationImplemented(OperationEnum.purge, resourceHandler)) {
-			if (resourceParentName == null) {
+		if (resourceParentName == null) {
+			if (TestOperationImplemented(OperationEnum.purge, resourceHandler)) {
 				purgeOperation = CreateOperation("delete", resourceName,
 				    new ResourceRepresentation("purge", new ArrayList()), OperationEnum.purge);
-			} else {
+			}
+		} else {
+			if (TestOperationImplemented(OperationEnum.purgeSubresource, resourceHandler)) {
 				purgeOperation = CreateOperation("delete", resourceName,
 				    new ResourceRepresentation("purge", new ArrayList()), OperationEnum.purgeSubresource);
 			}
@@ -521,22 +649,6 @@ public class SwaggerSpecificationCreator {
 		
 		// generate swagger JSON for each handler
 		for (DelegatingResourceHandler<?> resourceHandler : resourceHandlers) {
-			
-			// get delegate
-			Object delegate = null;
-			try {
-				if (!Modifier.isInterface(resourceHandler.newDelegate().getClass().getModifiers())
-				        && !Modifier.isAbstract(resourceHandler.newDelegate().getClass().getModifiers())) {
-					delegate = resourceHandler.newDelegate();
-				}
-			}
-			catch (Exception ex) {
-				continue;
-			}
-			if (delegate == null) {
-				// TODO: handle resources that don't implement newDelegate(), e.g. ConceptSearchResource1_9, all subclasses of EvaluatedResource in the reporting rest module
-				continue;
-			}
 			
 			// get name and parent if it's a subresource
 			Resource annotation = resourceHandler.getClass().getAnnotation(Resource.class);
@@ -583,7 +695,7 @@ public class SwaggerSpecificationCreator {
 			/////////////////////////
 			// GET all             //
 			/////////////////////////
-			Path rootPathGetAll = buildFetchAllPath(rootPath, resourceHandler, delegate, resourceName, resourceParentName);
+			Path rootPathGetAll = buildFetchAllPath(rootPath, resourceHandler, resourceName, resourceParentName);
 			if (rootPathGetAll != null) {
 				if (resourceParentName == null) {
 					pathMap.put("/" + resourceName, rootPathGetAll);
@@ -630,7 +742,7 @@ public class SwaggerSpecificationCreator {
 			/////////////////////////
 			// GET with UUID       //
 			/////////////////////////
-			Path uuidPathGetAll = buildGetWithUUIDPath(uuidPath, resourceHandler, delegate, resourceName, resourceParentName);
+			Path uuidPathGetAll = buildGetWithUUIDPath(uuidPath, resourceHandler, resourceName, resourceParentName);
 			if (uuidPathGetAll != null) {
 				if (resourceParentName == null) {
 					pathMap.put("/" + resourceName + "/{uuid}", uuidPathGetAll);
