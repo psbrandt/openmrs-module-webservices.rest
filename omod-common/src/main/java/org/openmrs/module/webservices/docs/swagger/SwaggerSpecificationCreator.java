@@ -14,7 +14,7 @@ package org.openmrs.module.webservices.docs.swagger;
 import com.fasterxml.jackson.annotation.JsonInclude.Include;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.SerializationFeature;
-import org.apache.commons.logging.Log;
+import org.apache.commons.lang.StringUtils;
 import org.apache.log4j.Level;
 import org.apache.log4j.LogManager;
 import org.apache.log4j.Logger;
@@ -32,6 +32,7 @@ import org.openmrs.module.webservices.rest.web.annotation.SubResource;
 import org.openmrs.module.webservices.rest.web.api.RestService;
 import org.openmrs.module.webservices.rest.web.representation.Representation;
 import org.openmrs.module.webservices.rest.web.resource.api.SearchHandler;
+import org.openmrs.module.webservices.rest.web.resource.api.SearchQuery;
 import org.openmrs.module.webservices.rest.web.resource.impl.DelegatingResourceDescription;
 import org.openmrs.module.webservices.rest.web.resource.impl.DelegatingResourceDescription.Property;
 import org.openmrs.module.webservices.rest.web.resource.impl.DelegatingResourceHandler;
@@ -45,7 +46,6 @@ import java.io.PrintStream;
 import java.lang.reflect.Method;
 import java.util.*;
 import java.util.Map.Entry;
-import java.util.logging.Handler;
 
 public class SwaggerSpecificationCreator {
 	
@@ -82,11 +82,11 @@ public class SwaggerSpecificationCreator {
 			CreateApiDefinition();
 			BetterAddPaths();
 			//AddPaths();
-			CreateObjectDefinitions();
-			//AddResourceTags();
+			createObjectDefinitions();
+			//addResourceTags();
 			//toggleLogs(RestConstants.SWAGGER_LOGS_ON);
 		}
-		return CreateJSON();
+		return createJSON();
 	}
 	
 	private void toggleLogs(boolean targetState) {
@@ -148,8 +148,10 @@ public class SwaggerSpecificationCreator {
 		        "HTTP basic access authentication using OpenMRS username and password"));
 		List<String> produces = new ArrayList<String>();
 		produces.add("application/json");
+		produces.add("application/xml");
 		List<String> consumes = new ArrayList<String>();
 		consumes.add("application/json");
+		consumes.add("application/xml");
 		swaggerSpecification.setHost(getBaseUrl());
 		swaggerSpecification.setBasePath("/" + RestConstants.VERSION_1);
 		swaggerSpecification.setProduces(produces);
@@ -344,8 +346,19 @@ public class SwaggerSpecificationCreator {
 	private ResourceRepresentation getGETRepresentation(DelegatingResourceHandler<?> resourceHandler) {
 		ResourceRepresentation getRepresentation = null;
 		try {
+			// first try the full representation
 			getRepresentation = new ResourceRepresentation("GET", resourceHandler
 			        .getRepresentationDescription(Representation.FULL).getProperties().keySet());
+			return getRepresentation;
+		}
+		catch (Exception e) {
+			// don't panic
+		}
+		try {
+			// next try the full representation
+			getRepresentation = new ResourceRepresentation("GET", resourceHandler
+					.getRepresentationDescription(Representation.DEFAULT).getProperties().keySet());
+			return getRepresentation;
 		}
 		catch (Exception e) {
 			// don't panic
@@ -416,11 +429,11 @@ public class SwaggerSpecificationCreator {
 			if (resourceParentName == null) {
 				if (TestOperationImplemented(OperationEnum.get, resourceHandler)) {
 					
-					getOperation = CreateOperation("get", resourceName, getRepresentation, OperationEnum.get);
+					getOperation = createOperation("get", resourceName, getRepresentation, OperationEnum.get);
 				}
 			} else {
 				if (TestOperationImplemented(OperationEnum.getSubresource, resourceHandler)) {
-					getOperation = CreateOperation("get", resourceName, getRepresentation, OperationEnum.getSubresource);
+					getOperation = createOperation("get", resourceName, getRepresentation, OperationEnum.getSubresource);
 				}
 			}
 			
@@ -457,9 +470,9 @@ public class SwaggerSpecificationCreator {
 			
 			if (TestOperationImplemented(OperationEnum.getWithUUID, resourceHandler)) {
 				if (resourceParentName == null) {
-					getOperation = CreateOperation("get", resourceName, getRepresentation, OperationEnum.getWithUUID);
+					getOperation = createOperation("get", resourceName, getRepresentation, OperationEnum.getWithUUID);
 				} else {
-					getOperation = CreateOperation("get", resourceName, getRepresentation,
+					getOperation = createOperation("get", resourceName, getRepresentation,
 					    OperationEnum.getSubresourceWithUUID);
 				}
 			}
@@ -497,12 +510,12 @@ public class SwaggerSpecificationCreator {
 			
 			if (resourceParentName == null) {
 				if (TestOperationImplemented(OperationEnum.postCreate, resourceHandler)) {
-					postCreateOperation = CreateOperation("post", resourceName, postCreateRepresentation,
+					postCreateOperation = createOperation("post", resourceName, postCreateRepresentation,
 					    OperationEnum.postCreate);
 				}
 			} else {
 				if (TestOperationImplemented(OperationEnum.postSubresource, resourceHandler)) {
-					postCreateOperation = CreateOperation("post", resourceName, postCreateRepresentation,
+					postCreateOperation = createOperation("post", resourceName, postCreateRepresentation,
 					    OperationEnum.postSubresource);
 				}
 			}
@@ -540,10 +553,10 @@ public class SwaggerSpecificationCreator {
 			
 			if (TestOperationImplemented(OperationEnum.postUpdate, resourceHandler)) {
 				if (resourceParentName == null) {
-					postUpdateOperation = CreateOperation("post", resourceName, postUpdateRepresentation,
+					postUpdateOperation = createOperation("post", resourceName, postUpdateRepresentation,
 					    OperationEnum.postUpdate);
 				} else {
-					postUpdateOperation = CreateOperation("post", resourceName, postUpdateRepresentation,
+					postUpdateOperation = createOperation("post", resourceName, postUpdateRepresentation,
 					    OperationEnum.postUpdateSubresouce);
 				}
 			}
@@ -578,12 +591,12 @@ public class SwaggerSpecificationCreator {
 		
 		if (resourceParentName == null) {
 			if (TestOperationImplemented(OperationEnum.delete, resourceHandler)) {
-				deleteOperation = CreateOperation("delete", resourceName, new ResourceRepresentation("delete",
+				deleteOperation = createOperation("delete", resourceName, new ResourceRepresentation("delete",
 				        new ArrayList()), OperationEnum.delete);
 			}
 		} else {
 			if (TestOperationImplemented(OperationEnum.deleteSubresource, resourceHandler)) {
-				deleteOperation = CreateOperation("delete", resourceName, new ResourceRepresentation("delete",
+				deleteOperation = createOperation("delete", resourceName, new ResourceRepresentation("delete",
 				        new ArrayList()), OperationEnum.deleteSubresource);
 			}
 		}
@@ -616,12 +629,12 @@ public class SwaggerSpecificationCreator {
 		
 		if (resourceParentName == null) {
 			if (TestOperationImplemented(OperationEnum.purge, resourceHandler)) {
-				purgeOperation = CreateOperation("delete", resourceName,
+				purgeOperation = createOperation("delete", resourceName,
 				    new ResourceRepresentation("purge", new ArrayList()), OperationEnum.purge);
 			}
 		} else {
 			if (TestOperationImplemented(OperationEnum.purgeSubresource, resourceHandler)) {
-				purgeOperation = CreateOperation("delete", resourceName,
+				purgeOperation = createOperation("delete", resourceName,
 				    new ResourceRepresentation("purge", new ArrayList()), OperationEnum.purgeSubresource);
 			}
 		}
@@ -640,8 +653,117 @@ public class SwaggerSpecificationCreator {
 		return path;
 	}
 	
+	private void addIndividualPath(Map<String, Path> pathMap, Path pathCheck, String resourceParentName,
+	        String resourceName, Path path, String pathSuffix) {
+		if (pathCheck != null) {
+			if (resourceParentName == null) {
+				pathMap.put("/" + resourceName + pathSuffix, path);
+			} else {
+				pathMap.put("/" + resourceParentName + "/{uuid}/" + resourceName + pathSuffix, path);
+			}
+		}
+	}
+	
+	private String buildSearchParameterDependencyString(Set<String> dependencies) {
+		StringBuffer sb = new StringBuffer();
+		
+		sb.append("Must be used with ");
+		sb.append(StringUtils.join(dependencies, ", "));
+		
+		String ret = sb.toString();
+		int ind = ret.lastIndexOf(", ");
+
+		if(ind > -1) {
+			ret = new StringBuilder(ret).replace(ind, ind + 2, " or ").toString();
+		}
+		
+		return ret;
+	}
+	
+	private void addSearchOperations(String resourceName, String resourceParentName, Path getAllPath,
+	        Map<String, Path> pathMap) {
+		boolean wasNew = false;
+		
+		if (resourceName != null && hasSearchHandler(resourceName)) {
+			// if the path has no operations, add a note that search parameters are mandatory
+			Operation get;
+			if (getAllPath.getOperations().isEmpty() || getAllPath.getOperations().get("get") == null) {
+				// create search-only operation
+				get = new Operation();
+				
+				get.setSummary("Search for " + resourceName);
+				get.setDescription("At least one search parameter must be specified");
+				
+				// produces
+				List<String> produces = new ArrayList<String>();
+				produces.add("application/json");
+				produces.add("application/xml");
+				get.setProduces(produces);
+				
+				// schema
+				Response statusOKResponse = new Response();
+				statusOKResponse.setDescription(resourceName + " response");
+				Schema schema = new Schema();
+				
+				// response
+				statusOKResponse.setSchema(schema);
+				List<String> resourceTags = new ArrayList<String>();
+				resourceTags.add(resourceName);
+				get.setTags(resourceTags);
+				Map<String, Response> responses = new HashMap<String, Response>();
+				responses.put("200", statusOKResponse);
+				get.setResponses(responses);
+				
+				wasNew = true;
+			} else {
+				get = getAllPath.getOperations().get("get");
+				get.setSummary("Fetch all non-retired " + resourceName + " resources or perform search");
+				get.setDescription("All search parameters are optional");
+			}
+			
+			List<Parameter> parameterList = get.getParameters() == null ? new ArrayList<Parameter>() : get.getParameters();
+			
+			// FIXME: this isn't perfect, it doesn't cover the case where multiple parameters are required together
+			// FIXME: See https://github.com/OAI/OpenAPI-Specification/issues/256
+			for (SearchHandler searchHandler : Context.getService(RestService.class).getAllSearchHandlers()) {
+				
+				String supportedResourceWithVersion = searchHandler.getSearchConfig().getSupportedResource();
+				String supportedResource = supportedResourceWithVersion
+				        .substring(supportedResourceWithVersion.indexOf('/') + 1);
+				
+				if (resourceName.equals(supportedResource)) {
+					for (SearchQuery searchQuery : searchHandler.getSearchConfig().getSearchQueries()) {
+						// parameters with no dependencies
+						for (String requiredParameter : searchQuery.getRequiredParameters()) {
+							Parameter p = new Parameter();
+							p.setName(requiredParameter);
+							p.setIn("query");
+							parameterList.add(p);
+						}
+						// parameters with dependencies
+						for (String requiredParameter : searchQuery.getOptionalParameters()) {
+							Parameter p = new Parameter();
+							p.setName(requiredParameter);
+							p.setDescription(buildSearchParameterDependencyString(searchQuery.getRequiredParameters()));
+							p.setIn("query");
+							parameterList.add(p);
+						}
+					}
+				}
+			}
+			
+			get.setParameters(parameterList);
+			
+			if (wasNew) {
+				getAllPath.getOperations().put("get", get);
+				addIndividualPath(pathMap, getAllPath, resourceParentName, resourceName, getAllPath, "");
+			}
+		}
+	}
+	
 	private void BetterAddPaths() {
 		Map<String, Path> pathMap = new HashMap<String, Path>();
+		Definitions definitions = new Definitions();
 		
 		// get all registered resource handlers
 		List<DelegatingResourceHandler<?>> resourceHandlers = Context.getService(RestService.class).getResourceHandlers();
@@ -696,96 +818,65 @@ public class SwaggerSpecificationCreator {
 			// GET all             //
 			/////////////////////////
 			Path rootPathGetAll = buildFetchAllPath(rootPath, resourceHandler, resourceName, resourceParentName);
-			if (rootPathGetAll != null) {
-				if (resourceParentName == null) {
-					pathMap.put("/" + resourceName, rootPathGetAll);
-				} else {
-					pathMap.put("/" + resourceParentName + "/{uuid}/" + resourceName, rootPathGetAll);
-				}
-			}
-			
+			addIndividualPath(pathMap, rootPathGetAll, resourceParentName, resourceName, rootPathGetAll, "");
+
+			/////////////////////////
+			// GET search          //
+			/////////////////////////
+			addSearchOperations(resourceName, resourceParentName, rootPathGetAll, pathMap);
+
 			/////////////////////////
 			// POST create         //
 			/////////////////////////
 			Path rootPathPostCreate = buildCreatePath(rootPathGetAll, resourceHandler, resourceName, resourceParentName);
-			if (resourceParentName == null) {
-				pathMap.put("/" + resourceName, rootPathPostCreate);
-			} else {
-				pathMap.put("/" + resourceParentName + "/{uuid}/" + resourceName, rootPathPostCreate);
-			}
-			
-			/////////////////////////
-			// GET search          //
-			/////////////////////////
-			if (resourceName != null) {
-				if (HasSearchHandler(resourceName)) {
-					List<Operation> searchHandlerOperations = CreateSearchHandlersOperations(resourceName);
-					
-					for (Operation operation : searchHandlerOperations) {
-						Map<String, Operation> searchHandlerMap = new HashMap<String, Operation>();
-						searchHandlerMap.put("get", operation);
-						Path searchHandlerPath = new Path();
-						searchHandlerPath.setOperations(searchHandlerMap);
-						StringBuffer buffer = new StringBuffer();
-						for (int i = 0; i < operation.getParameters().size(); i++) {
-							buffer.append(operation.getParameters().get(i).getName());
-							if (i != operation.getParameters().size() - 1) {
-								buffer.append(",");
-							}
-						}
-						pathMap.put("/" + resourceName + " (Search by parameters: " + buffer.toString() + ")",
-						    searchHandlerPath);
-					}
-				}
-			}
+			addIndividualPath(pathMap, rootPathPostCreate, resourceParentName, resourceName, rootPathPostCreate, "");
+
+
+			//			if (resourceName != null) {
+			//				if (hasSearchHandler(resourceName)) {
+			//					List<Operation> searchHandlerOperations = createSearchHandlersOperations(resourceName);
+			//
+			//					for (Operation operation : searchHandlerOperations) {
+			//						Map<String, Operation> searchHandlerMap = new HashMap<String, Operation>();
+			//						searchHandlerMap.put("get", operation);
+			//						Path searchHandlerPath = new Path();
+			//						searchHandlerPath.setOperations(searchHandlerMap);
+			//						StringBuffer buffer = new StringBuffer();
+			//						for (int i = 0; i < operation.getParameters().size(); i++) {
+			//							buffer.append(operation.getParameters().get(i).getName());
+			//							if (i != operation.getParameters().size() - 1) {
+			//								buffer.append(",");
+			//							}
+			//						}
+			//						pathMap.put("/" + resourceName + " (Search by parameters: " + buffer.toString() + ")",
+			//						    searchHandlerPath);
+			//					}
+			//				}
+			//			}
 			
 			/////////////////////////
 			// GET with UUID       //
 			/////////////////////////
 			Path uuidPathGetAll = buildGetWithUUIDPath(uuidPath, resourceHandler, resourceName, resourceParentName);
-			if (uuidPathGetAll != null) {
-				if (resourceParentName == null) {
-					pathMap.put("/" + resourceName + "/{uuid}", uuidPathGetAll);
-				} else {
-					pathMap.put("/" + resourceParentName + "/{uuid}/" + resourceName + "/{uuid}", uuidPathGetAll);
-				}
-			}
+			addIndividualPath(pathMap, uuidPathGetAll, resourceParentName, resourceName, uuidPathGetAll, "/{uuid}");
 			
 			/////////////////////////
 			// POST update         //
 			/////////////////////////
 			Path uuidPathPostUpdate = buildUpdatePath(uuidPathGetAll, resourceHandler, resourceName, resourceParentName);
-			if (uuidPathGetAll != null) {
-				if (resourceParentName == null) {
-					pathMap.put("/" + resourceName + "/{uuid}", uuidPathPostUpdate);
-				} else {
-					pathMap.put("/" + resourceParentName + "/{uuid}/" + resourceName + "/{uuid}", uuidPathPostUpdate);
-				}
-			}
+			addIndividualPath(pathMap, uuidPathGetAll, resourceName, resourceParentName, uuidPathPostUpdate, "/{uuid}");
 			
 			/////////////////////////
 			// DELETE              //
 			/////////////////////////
 			Path uuidPathDelete = buildDeletePath(uuidPathPostUpdate, resourceHandler, resourceName, resourceParentName);
-			if (uuidPathDelete != null) {
-				if (resourceParentName == null) {
-					pathMap.put("/" + resourceName + "/{uuid}", uuidPathDelete);
-				} else {
-					pathMap.put("/" + resourceParentName + "/{uuid}/" + resourceName + "/{uuid}", uuidPathDelete);
-				}
-			}
+			addIndividualPath(pathMap, uuidPathDelete, resourceName, resourceParentName, uuidPathDelete, "/{uuid}");
 			
 			/////////////////////////
 			// DELETE (purge)      //
 			/////////////////////////
 			Path uuidPathPurge = buildPurgePath(purgePath, resourceHandler, resourceName, resourceParentName);
-			if (uuidPathPurge != null) {
-				if (resourceParentName == null) {
-					pathMap.put("/" + resourceName + "/{uuid} (purge)", uuidPathPurge);
-				} else {
-					pathMap.put("/" + resourceParentName + "/{uuid}/" + resourceName + "/{uuid} (purge)", uuidPathPurge);
-				}
-			}
+			addIndividualPath(pathMap, uuidPathPurge, resourceName, resourceParentName, uuidPathPurge, "/{uuid}");
 		}
 		
 		Paths paths = new Paths();
@@ -794,7 +885,7 @@ public class SwaggerSpecificationCreator {
 		swaggerSpecification.setTags(new ArrayList(tags.values()));
 	}
 	
-	private void CreateObjectDefinitions() {
+	private void createObjectDefinitions() {
 		Definitions definitions = new Definitions();
 		Map<String, Definition> definitionsMap = new HashMap<String, Definition>();
 		
@@ -1098,7 +1189,7 @@ public class SwaggerSpecificationCreator {
 		
 	}
 	
-	private String CreateJSON() {
+	private String createJSON() {
 		String json = "";
 		try {
 			ObjectMapper mapper = new ObjectMapper();
@@ -1116,7 +1207,7 @@ public class SwaggerSpecificationCreator {
 		return json;
 	}
 	
-	private void AddResourceTags() {
+	private void addResourceTags() {
 		
 		List<Tag> tags = new ArrayList<Tag>();
 		for (ResourceDoc doc : resourceDocList) {
@@ -1151,7 +1242,7 @@ public class SwaggerSpecificationCreator {
 		swaggerSpecification.setTags(tagList);
 	}
 	
-	private Operation CreateOperation(String operationName, String resourceName, ResourceRepresentation representation,
+	private Operation createOperation(String operationName, String resourceName, ResourceRepresentation representation,
 	        OperationEnum operationEnum) {
 		
 		Operation operation = new Operation();
@@ -1160,6 +1251,7 @@ public class SwaggerSpecificationCreator {
 		
 		List<String> produces = new ArrayList<String>();
 		produces.add("application/json");
+		produces.add("application/xml");
 		operation.setProduces(produces);
 		List<Parameter> parameters = new ArrayList<Parameter>();
 		
@@ -1215,7 +1307,7 @@ public class SwaggerSpecificationCreator {
 		return operation;
 	}
 	
-	private Operation CreateSearchHandlerOperation(String operationName, String resourceName, String searchHandlerId,
+	private Operation createSearchHandlerOperation(String operationName, String resourceName, String searchHandlerId,
 	        OperationEnum operationEnum, int queryIndex) {
 		
 		Operation operation = new Operation();
@@ -1284,7 +1376,7 @@ public class SwaggerSpecificationCreator {
 		
 	}
 	
-	private boolean HasSearchHandler(String resourceName) {
+	private boolean hasSearchHandler(String resourceName) {
 		for (SearchHandlerDoc doc : searchHandlerDocs) {
 			if (doc.getResourceURL().contains(resourceName)) {
 				return true;
@@ -1294,7 +1386,7 @@ public class SwaggerSpecificationCreator {
 		return false;
 	}
 	
-	private List<Operation> CreateSearchHandlersOperations(String resourceName) {
+	private List<Operation> createSearchHandlersOperations(String resourceName) {
 		List<Operation> searchHandlersOperations = new ArrayList<Operation>();
 		
 		for (SearchHandlerDoc doc : searchHandlerDocs) {
@@ -1302,7 +1394,7 @@ public class SwaggerSpecificationCreator {
 			if (currentResourceName.equals(resourceName)) {
 				for (SearchQueryDoc queryDoc : doc.getSearchQueriesDoc()) {
 					int queryIndex = doc.getSearchQueriesDoc().indexOf(queryDoc);
-					Operation searchHandlerOperation = CreateSearchHandlerOperation("get", resourceName,
+					Operation searchHandlerOperation = createSearchHandlerOperation("get", resourceName,
 					    doc.getSearchHandlerId(), OperationEnum.getWithSearchHandler, queryIndex);
 					searchHandlerOperation.setDescription(queryDoc.getDescription());
 					searchHandlersOperations.add(searchHandlerOperation);
