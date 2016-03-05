@@ -8,7 +8,10 @@
 <a href="https://modules.openmrs.org/#/show/153/webservices-rest"><img src="https://omrs-shields.psbrandt.io/version/153" alt="Version"/></a>
 <a href="https://modules.openmrs.org/#/show/153/webservices-rest"><img src="https://omrs-shields.psbrandt.io/omrsversion/153" alt="OpenMRS Version"/></a>
 
-The module exposes the OpenMRS API as REST web services. If an OpenMRS instance is running the `webservice.rest` module, other applications can retrieve and post certain information to an OpenMRS database. Module documentation is available at the [REST Module wiki page](https://wiki.openmrs.org/display/docs/REST+Module). Technical documentation for the module can be found [here](https://wiki.openmrs.org/display/docs/REST+Web+Services+Technical+Documentation).
+The module exposes the OpenMRS API as REST web services. If an OpenMRS instance is running the `webservice.rest` module, other applications can retrieve and post certain information to an OpenMRS database.
+
+If you are not a developer, or just want to install the REST Web Services module into your
+system, visit [module download page](https://modules.openmrs.org/#/show/153/webservices-rest) instead.
 
 ## Download
   * [Download Module](https://modules.openmrs.org/#/show/153/webservices-rest)            
@@ -19,6 +22,72 @@ The module exposes the OpenMRS API as REST web services. If an OpenMRS instance 
 The REST Web Services module requires at least OpenMRS 1.9.0 or 1.8.1 to run.
 
 ## Developer Documentation
+
+### Wiki Pages
+
+<table>
+  <thead>
+      <tr>
+        <th>
+          Page
+        </th>
+        <th>
+          Description
+        </th>
+      </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>
+        [REST Module](https://wiki.openmrs.org/display/docs/REST+Module)
+      </td>
+      <td>
+        The main module page with a description of the configuration options.
+      </td>
+    </tr>
+    <tr>
+      <td>
+        [Technical Documentation](https://wiki.openmrs.org/display/docs/REST+Web+Services+Technical+Documentation)
+      </td>
+      <td>
+        Test
+      </td>
+    </tr>
+    <tr>
+      <td>
+        [Core Developer Guide](https://wiki.openmrs.org/display/docs/Adding+a+Web+Service+Step+by+Step+Guide+for+Core+Developers)
+      </td>
+      <td>
+        Description of how to add REST resources to OpenMRS core.
+      </td>
+    </tr>
+    <tr>
+      <td>
+        [Module Developer Guide](https://wiki.openmrs.org/display/docs/Adding+a+Web+Service+Step+by+Step+Guide+for+Module+Developers)
+      </td>
+      <td>
+        Description of how to add REST resources to OpenMRS modules.
+      </td>
+    </tr>
+    <tr>
+      <td>
+        [REST Client Developer Guide](https://wiki.openmrs.org/display/docs/REST+Web+Services+API+For+Clients)
+      </td>
+      <td>
+        Description of how to build an OpenMRS client application.
+      </td>
+    </tr>
+    <tr>
+      <td>
+        Page
+      </td>
+      <td>
+        Test
+      </td>
+    </tr>
+  <tbody>
+</table>
+
 
 ### API Documentation
 
