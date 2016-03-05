@@ -23,16 +23,6 @@ public class Contact {
 		this.setUrl(url);
 	}
 	
-	public Contact(String name, String url) {
-		this.setName(name);
-		this.setUrl(url);
-	}
-	
-	public Contact(String name, String url) {
-		this.setName(name);
-		this.setUrl(url);
-	}
-	
 	/**
 	 * @return the name
 	 */

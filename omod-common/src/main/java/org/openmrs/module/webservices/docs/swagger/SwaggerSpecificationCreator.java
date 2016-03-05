@@ -20,6 +20,7 @@ import org.apache.log4j.LogManager;
 import org.apache.log4j.Logger;
 import org.openmrs.api.context.Context;
 import org.openmrs.module.Module;
+import org.openmrs.module.ModuleFactory;
 import org.openmrs.module.webservices.docs.ResourceRepresentation;
 import org.openmrs.module.webservices.docs.SearchHandlerDoc;
 import org.openmrs.module.webservices.docs.SearchQueryDoc;
@@ -142,7 +143,7 @@ public class SwaggerSpecificationCreator {
 		// license
 		info.setLicense(new License("MPL-2.0 w/ HD", "http://openmrs.org/license"));
 		// detailed versions
-		info.setVersions(new Versions(OpenmrsConstants.OPENMRS_VERSION, GetModuleVersions()));
+		info.setVersions(new Versions(OpenmrsConstants.OPENMRS_VERSION, getModuleVersions()));
 		swaggerSpecification.setInfo(info);
 		// security definitions
 		swaggerSpecification.setSecurityDefinitions(new SecurityDefinitions("basic",
@@ -158,6 +159,16 @@ public class SwaggerSpecificationCreator {
 		swaggerSpecification.setBasePath("/" + RestConstants.VERSION_1);
 		swaggerSpecification.setProduces(produces);
 		swaggerSpecification.setConsumes(consumes);
+	}
+	
+	private List<ModuleVersion> getModuleVersions() {
+		List<ModuleVersion> moduleVersions = new ArrayList<ModuleVersion>();
+		
+		for (Module module : ModuleFactory.getLoadedModules()) {
+			moduleVersions.add(new ModuleVersion(module.getModuleId(), module.getVersion()));
+		}
+		
+		return moduleVersions;
 	}
 	
 	private boolean testOperationImplemented(OperationEnum operation, DelegatingResourceHandler<?> resourceHandler) {
